@@ -28,7 +28,7 @@ IO.setmode (IO.BCM)         #we are programming the GPIO by BCM pin numbers. (PI
 IO.setup(pinPi['servoMotor'],IO.OUT)           # initialize GPIO19 as an output.
 IO.setup(pinPi['mainMotor1'],IO.OUT)
 IO.setup(pinPi['mainMotor2'],IO.OUT)
-IO.setup(pinPi['hall'],IO.IN)
+#IO.setup(pinPi['hall'],IO.IN)
 
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
 pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
