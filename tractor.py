@@ -6,7 +6,6 @@ import threading
 import curses
 import smbus
 
-
 #I2C Setup
 channel = 1
 device_reg_mode = 0x00
