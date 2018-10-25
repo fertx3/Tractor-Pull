@@ -6,7 +6,6 @@ import threading
 import curses
 import smbus
 
-
 #I2C Setup
 channel = 1
 device_reg_mode = 0x00
@@ -38,13 +37,23 @@ pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
 pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
 
 direction = 'center'
+
 speed = 0
+
 distance = 0
 
 def changeSpeed():
 	global speed
+	currentSpeed = 0;
 	while process==1:
+		time.sleep(0.2)
 		lock.acquire()
+
+		if currentSpeed == speed:
+			lock.release()
+			continue
+		
+		currentSpeed = speed;
 		print("speed: ",speed)
 		if speed == 0:
 			print("speed0!!")
@@ -60,45 +69,55 @@ def changeSpeed():
 			IO.output(pinPi['mainMotor2'], False)
 		print("change speed\n")
 		lock.release()
-		time.sleep(0.2)
 
 def changeDirection():
 	global direction
+	currentDirection = 'center'
+	
 	while process==1:
+		time.sleep(0.2)
 		lock.acquire()
+		if currentDirection == direction:
+			lock.release()
+			continue
+
+		currentDirection = direction
 		pinDirection.set_servo(pinPi['servoMotor'], directionVar[direction])
 		time.sleep(0.5)
 		lock.release()
-		time.sleep(0.2)
 		print("change Direction\n")
-#		time.sleep(1)
 
 def ultraDistance():
-	global distance
 	global speed
+	global distance
+	
 	while process == 1:
+		
+		time.sleep(0.2)
 		lock.acquire()
+
 		IO.output(pinPi['ultraTrigger'], True)
 		time.sleep(0.00001)
 		IO.output(pinPi['ultraTrigger'], False)
-		
 		
 		initTime = time.time()
 
 		while IO.input(pinPi['ultraEcho']) == False:
 			StartTime = time.time()
-			if StartTime-initTime > 1:
-				print("Error")
+			if StartTime-initTime > 1.5:
+				print("Error(StartTime > 1.5 sec)")
 				break
 		while IO.input(pinPi['ultraEcho']) == True:
 			StopTime = time.time()
-			if StopTime-initTime > 1:
-				print("Error")
+			if StopTime-initTime > 1.5:
+				print("Error(StopTime > 1.5 sec")
 				break
 		TimeElapsed = StopTime - StartTime
 		distance = round((TimeElapsed * 17150),2)
 		
 		if distance < 1.0:
+			print("Distance Less than 1.0")
+			lock.release()
 			continue #less than 1cm is error	
 		print("%.1f cm" %distance)
 		#test code
@@ -107,9 +126,7 @@ def ultraDistance():
 		else:
 			speed = 1
 		#
-		time.sleep(0.2)
 		lock.release()
-		time.sleep(0.2)
 
 def sendStatus():
 	global mainMotor1
