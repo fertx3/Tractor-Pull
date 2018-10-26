@@ -5,14 +5,17 @@ import time                #calling time to provide delays in program
 import threading
 import curses
 import smbus
+import math
 
 #I2C Setup
 channel = 1
 device_reg_mode = 0x00
-i2cAddress = {'ultrawave' : 0x00, 'infrared' : 0x00, 'compass' : 0x1E}
+i2cAddress = {'ultrawave' : 0x00, 'infrared' : 0x3E, 'compass' : 0x1E}
 sensorBus = smbus.SMBus(channel)
 
 process =1
+
+pi = 3.14159265359
 
 #Instruction
 #read_byte_data(int addr, char cmd)
@@ -36,6 +39,7 @@ IO.setup(pinPi['ultraEcho'],IO.IN)
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
 pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
 
+compass = ''
 direction = 'center'
 
 speed = 0
@@ -136,6 +140,47 @@ def sendStatus():
 	print("Main Motor2:", mainMotor2)
 	print("Direction: ", direction)
 
+def compass():
+	global compass
+
+	sensorBus.write_byte_data(i2cAddress['compass'], 0x00, 0x70)
+	sensorBus.write_byte_data(i2cAddress['compass'], 0x01, 0xA0)
+	sensorBus.write_byte_data(i2cAddress['compass'], 0x02, 0x00)
+	
+	time.sleep(0.5)
+
+	while(process == 1):
+		time.sleep(0.2)
+		lock.acquire()
+
+		rawCompass = sensorBus.read_i2c_block_data(i2cAddress['compass'], 0x03, 6)
+		xCompass = rawCompass[0] * 256 + rawCompass[1]
+		yCompass = rawCompass[2] * 256 + rawCompass[3]
+		zCompass = rawCompass[4] * 256 + rawCompass[5]
+
+		if xCompass > 32767:
+			xCompass = xCompass - 65536
+
+		if yCompass > 32767:
+			yCompass = yCompass - 65536
+
+		if zCompass > 32767:
+			zCompass = zCompass - 65536
+		
+		heading = math.atan2(yCompass, xCompass)
+
+		if(heading > 2*pi):
+			heading = heading - 2*pi
+
+		if(heading < 0):
+			heading = heading + 2*pi
+
+		headingAngle = int(heading * 180/pi)
+		
+		print("Heading Angle: %d" %headingAngle)
+		time.sleep(1)
+		#print("X: %d, Y: %d, Z: %d" %(xCompass,yCompass,zCompass))
+		lock.release()
 
 tChangeSpeed = threading.Thread(target=changeSpeed)
 tChangeSpeed.start()
@@ -146,9 +191,12 @@ tChangeDirection.start()
 tDistance = threading.Thread(target=ultraDistance)
 tDistance.start()
 
-#while 1:
+tCompass = threading.Thread(target=compass)
+tCompass.start()
 
-#	lock.acquire()
+while 1:
+	lock.acquire()
+
 #	print("main\n")
 #	temp = input("dirction: ")
 #	if temp == 'l':
@@ -160,7 +208,8 @@ tDistance.start()
 #	else:
 #		print("Wrong input")
 #	speed = int(input("speed [0-2]:"))
-#	lock.release()
+	lock.release()
+	time.sleep(1)
 
 
 tDistance.join()
