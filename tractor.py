@@ -22,7 +22,7 @@ pi = 3.14159265359
 #read_byte(int addr)
 
 lock = threading.Lock()
-pinPi = {'servoMotor': 13, 'mainMotor1': 19, 'mainMotor2': 26, 'hall':14, 'ultraTrigger' : 21, 'ultraEcho' : 20}
+pinPi = {'servoMotor': 13, 'mainMotor1': 19, 'mainMotor2': 26, 'hall':16, 'ultraTrigger' : 21, 'ultraEcho' : 20}
 
 #Max Value - Left: 1000 Center: 1500 Right: 2000
 directionVar = {'left': 1250, 'center':1520, 'right': 1770}
@@ -34,6 +34,7 @@ IO.setup(pinPi['mainMotor1'],IO.OUT)
 IO.setup(pinPi['mainMotor2'],IO.OUT)
 IO.setup(pinPi['ultraTrigger'],IO.OUT)
 IO.setup(pinPi['ultraEcho'],IO.IN)
+IO.setup(pinPi['hall'],IO.IN)
 #IO.setup(pinPi['hall'],IO.IN)
 
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
@@ -43,7 +44,7 @@ compass = ''
 direction = 'center'
 
 speed = 0
-
+tractorConnected = False
 distance = 0
 
 def changeSpeed():
@@ -178,10 +179,24 @@ def compass():
 		headingAngle = int(heading * 180/pi)
 		
 		print("Heading Angle: %d" %headingAngle)
-		time.sleep(1)
 		#print("X: %d, Y: %d, Z: %d" %(xCompass,yCompass,zCompass))
 		lock.release()
 
+def hall():
+	global tractorConnected
+
+	while(process == 1):
+		time.sleep(0.2)
+		lock.acquire()
+
+		if IO.input(pinPi['hall']) == True:
+			tractorConnected = True
+			print("Tractor Connected")
+		else:
+			tractorConnected = False
+			print("Tractor Not Connected")
+		lock.release()
+		
 tChangeSpeed = threading.Thread(target=changeSpeed)
 tChangeSpeed.start()
 
@@ -193,6 +208,9 @@ tDistance.start()
 
 tCompass = threading.Thread(target=compass)
 tCompass.start()
+
+tHall = threading.Thread(target=hall)
+tHall.start()
 
 while 1:
 	lock.acquire()
