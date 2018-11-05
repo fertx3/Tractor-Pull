@@ -10,19 +10,17 @@ import math
 #I2C Setup
 channel = 1
 device_reg_mode = 0x00
-i2cAddress = {'ultrawave' : 0x00, 'infrared' : 0x3E, 'compass' : 0x1E}
+i2cAddress = {'compass' : 0x1E}
 sensorBus = smbus.SMBus(channel)
-
-process =1
 
 pi = 3.14159265359
 
-#Instruction
-#read_byte_data(int addr, char cmd)
-#read_byte(int addr)
-
 lock = threading.Lock()
-pinPi = {'servoMotor': 13, 'mainMotor1': 19, 'mainMotor2': 26, 'hall':16, 'ultraTrigger' : 21, 'ultraEcho' : 20}
+
+process = True
+
+#Infrared Sensors Ports are needed to modify
+pinPi = {'servoMotor': 13, 'mainMotor1': 19, 'mainMotor2': 26, 'hall':16, 'ultraTrigger' : 21, 'ultraEcho' : 20, 'infraL': 22, 'infraC': 23, 'infraR': 24}
 
 #Max Value - Left: 1000 Center: 1500 Right: 2000
 directionVar = {'left': 1250, 'center':1520, 'right': 1770}
@@ -35,7 +33,10 @@ IO.setup(pinPi['mainMotor2'],IO.OUT)
 IO.setup(pinPi['ultraTrigger'],IO.OUT)
 IO.setup(pinPi['ultraEcho'],IO.IN)
 IO.setup(pinPi['hall'],IO.IN)
-#IO.setup(pinPi['hall'],IO.IN)
+
+IO.setup(pinPi['infraL'], IO.IN)
+IO.setup(pinPi['infraR'], IO.IN)
+IO.setup(pinPi['infraC'], IO.IN)
 
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
 pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
@@ -46,11 +47,13 @@ direction = 'center'
 speed = 0
 tractorConnected = False
 distance = 0
+isObstacle = False
 
 def changeSpeed():
 	global speed
 	currentSpeed = 0;
-	while process==1:
+	global process
+	while process == True:
 		time.sleep(0.2)
 		lock.acquire()
 
@@ -79,7 +82,8 @@ def changeDirection():
 	global direction
 	currentDirection = 'center'
 	
-	while process==1:
+	global process
+	while process == True:
 		time.sleep(0.2)
 		lock.acquire()
 		if currentDirection == direction:
@@ -95,9 +99,10 @@ def changeDirection():
 def ultraDistance():
 	global speed
 	global distance
-	
-	while process == 1:
-		
+	global isObstacle
+
+	global process
+	while process == True:
 		time.sleep(0.2)
 		lock.acquire()
 
@@ -128,18 +133,13 @@ def ultraDistance():
 		#test code
 		if distance < 60.0:
 			speed = 0
-		else:
+			isObstacle = True
+			
+		elif isObstacle == False:
 			speed = 1
 		#
 		lock.release()
 
-def sendStatus():
-	global mainMotor1
-	global mainMotor2
-	global direction
-	print("Main Motor1:", mainMotor1)
-	print("Main Motor2:", mainMotor2)
-	print("Direction: ", direction)
 
 def compass():
 	global compass
@@ -150,7 +150,8 @@ def compass():
 	
 	time.sleep(0.5)
 
-	while(process == 1):
+	global process
+	while process == True:
 		time.sleep(0.2)
 		lock.acquire()
 
@@ -182,10 +183,12 @@ def compass():
 		#print("X: %d, Y: %d, Z: %d" %(xCompass,yCompass,zCompass))
 		lock.release()
 
+
 def hall():
 	global tractorConnected
 
-	while(process == 1):
+	global process
+	while process == True:
 		time.sleep(0.2)
 		lock.acquire()
 
@@ -197,6 +200,53 @@ def hall():
 			print("Tractor Not Connected")
 		lock.release()
 		
+def infrared():
+	while process == True:
+		time.sleep(0.1)
+		
+		lock.acquire()
+
+		isLeftSensored = 1 if IO.input(pinPi['infraL']) == True else 0
+		isCenterSensored = 2 if IO.input(pinPi['infraC']) == True else 0
+		isRightSensored = 4 if IO.input(pinPi['infraR']) == True else 0
+
+		sensored = isLeftSensored + isCneterSensored + isRightSensored
+		
+		if sensored == 1 and direction != 'right':
+			direction = 'right'
+			print("Change to Right")
+		elif sensored == 2 and direction != 'center':
+			direction = 'center'
+			print("Change to Center")
+		elif sensored == 4 and direction != 'left':
+			direction = 'left'
+			print("Change to Left")
+		else:
+			print("Infrared Sensor Error!!!")
+			time.sleep(1)
+		
+		lock.release()
+
+def sendStatus():
+	global process
+	global mainMotor1
+	global mainMotor2
+	global speed
+	global direction
+	global isObstacle
+	global distance
+	global compass
+
+	lock.acquire()
+	time.sleep(0.2)
+	print("Main Motor1:", mainMotor1)
+	print("Main Motor2:", mainMotor2)
+	print("Direction: ", direction)
+	lock.release()
+
+print("Project [Tractor Pull] Start!!!")
+time.sleep(0.5)
+print("Creating Threads")
 tChangeSpeed = threading.Thread(target=changeSpeed)
 tChangeSpeed.start()
 
@@ -212,8 +262,13 @@ tCompass.start()
 tHall = threading.Thread(target=hall)
 tHall.start()
 
+tInfrared = threading.Thread(target=infrared)
+tInfrared.start()
+print ("Creating Threads Done!!")
+
+
 while 1:
-	lock.acquire()
+#	lock.acquire()
 
 #	print("main\n")
 #	temp = input("dirction: ")
@@ -226,13 +281,15 @@ while 1:
 #	else:
 #		print("Wrong input")
 #	speed = int(input("speed [0-2]:"))
-	lock.release()
+#	lock.release()
 	time.sleep(1)
 
 
 tDistance.join()
 tChangeSpeed.join()
 tChangeDirection.join()
+tInfrared.join()
+tHall.join()
 
 print ("DONE")
 
