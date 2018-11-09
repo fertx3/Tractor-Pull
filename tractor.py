@@ -133,7 +133,7 @@ def ultraDistance():
 		#test code
 		if distance < 60.0:
 			speed = 0
-			isObstacle = True
+			#isObstacle = True
 			
 		elif isObstacle == False:
 			speed = 1
@@ -210,7 +210,7 @@ def infrared():
 		isCenterSensored = 2 if IO.input(pinPi['infraC']) == True else 0
 		isRightSensored = 4 if IO.input(pinPi['infraR']) == True else 0
 
-		sensored = isLeftSensored + isCneterSensored + isRightSensored
+		sensored = isLeftSensored + isCenterSensored + isRightSensored
 		
 		if sensored == 1 and direction != 'right':
 			direction = 'right'
@@ -289,6 +289,7 @@ tDistance.join()
 tChangeSpeed.join()
 tChangeDirection.join()
 tInfrared.join()
+tCompass.join()
 tHall.join()
 
 print ("DONE")
