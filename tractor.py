@@ -6,6 +6,7 @@ import threading
 import curses
 import smbus
 import math
+import os
 
 #I2C Setup
 channel = 1
@@ -244,26 +245,36 @@ def sendStatus():
 	print("Direction: ", direction)
 	lock.release()
 
+os.system('clear')
 print("Project [Tractor Pull] Start!!!")
 time.sleep(0.5)
+
 print("Creating Threads")
+
 tChangeSpeed = threading.Thread(target=changeSpeed)
 tChangeSpeed.start()
+print("Created Threads[tChangeSpeed]")
 
 tChangeDirection = threading.Thread(target=changeDirection)
 tChangeDirection.start()
+print("Created Threads[tChangeDirection]")
 
 tDistance = threading.Thread(target=ultraDistance)
 tDistance.start()
+print("Created Threads[tDistance]")
 
 tCompass = threading.Thread(target=compass)
 tCompass.start()
+print("Created Threads[tCompass]")
 
 tHall = threading.Thread(target=hall)
 tHall.start()
+print("Created Threads[tHall]")
 
 tInfrared = threading.Thread(target=infrared)
 tInfrared.start()
+print("Created Threads[tInfrared]")
+
 print ("Creating Threads Done!!")
 
 
@@ -286,11 +297,17 @@ while 1:
 
 
 tDistance.join()
+print("Joined Tread [tDistance]");
 tChangeSpeed.join()
+print("Joined Tread [tChangeSpeed]");
 tChangeDirection.join()
+print("Joined Tread [tChangeDirection]");
 tInfrared.join()
+print("Joined Tread [tInfrared]");
 tCompass.join()
+print("Joined Tread [tCompass]");
 tHall.join()
+print("Joined Tread [tJoin]");
 
 print ("DONE")
 
