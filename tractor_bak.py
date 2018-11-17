@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import RPi.GPIO as IO    #calling header file which helps us use GPIO’s of PI
 from RPIO import PWM
-import Adafruit_ADS1x15
 import time                #calling time to provide delays in program
 import threading
 import curses
@@ -12,7 +11,7 @@ import os
 #I2C Setup
 channel = 1
 device_reg_mode = 0x00
-i2cAddress = {'compass' : 0x1E, 'infrared' : 0x48}
+i2cAddress = {'compass' : 0x1E}
 sensorBus = smbus.SMBus(channel)
 pi = 3.14159265359
 
@@ -21,15 +20,13 @@ lock = threading.Lock()
 process = True
 
 #Infrared Sensors Ports are needed to modify
-#pin19 may be damaged
-
-pinPi = {'servoMotor': 13, 'mainMotor1': 5, 'mainMotor2': 26, 'hall':16, 'ultraTrigger' : 21, 'ultraEcho' : 20, 'infraL': 22, 'infraC': 23, 'infraR': 24}
+pinPi = {'servoMotor': 13, 'mainMotor1': 19, 'mainMotor2': 26, 'hall':16, 'ultraTrigger' : 21, 'ultraEcho' : 20, 'infraL': 22, 'infraC': 23, 'infraR': 24}
 
 #Max Value - Left: 1000 Center: 1500 Right: 2000
 directionVar = {'left': 1250, 'center':1520, 'right': 1770}
 
-IO.setwarnings(False)           #do not show any warnings
-IO.setmode (IO.BCM)         #we are programming the GPIO by BCM pin numbers.
+#IO.setwarnings(False)           #do not show any warnings
+IO.setmode (IO.BCM)         #we are programming the GPIO by BCM pin numbers. (PIN35 as ‘GPIO19’)
 IO.setup(pinPi['servoMotor'],IO.OUT)           # initialize GPIO19 as an output.
 IO.setup(pinPi['mainMotor1'],IO.OUT)
 IO.setup(pinPi['mainMotor2'],IO.OUT)
@@ -51,37 +48,35 @@ speed = 0
 tractorConnected = False
 distance = 0
 isObstacle = False
-start = False
 
 def changeSpeed():
 	global speed
-	global start
 	currentSpeed = 0;
 	global process
 	while process == True:
 		time.sleep(0.2)
-		while start == True:	
-			lock.acquire()
-			if currentSpeed == speed:
-				lock.release()
-				continue
-			
-			currentSpeed = speed;
-			print("speed: ",speed)
-			if speed == 0:
-				print("speed0!!")
-				IO.output(pinPi['mainMotor1'], False)
-				IO.output(pinPi['mainMotor2'], False)
-			elif speed == 1:
-				print("speed1!")
-				IO.output(pinPi['mainMotor1'], False)
-				IO.output(pinPi['mainMotor2'], True)
-			elif speed == 2:
-				print("speed2")
-				IO.output(pinPi['mainMotor1'], True)
-				IO.output(pinPi['mainMotor2'], False)
-			print("change speed\n")
+		lock.acquire()
+
+		if currentSpeed == speed:
 			lock.release()
+			continue
+		
+		currentSpeed = speed;
+		print("speed: ",speed)
+		if speed == 0:
+			print("speed0!!")
+			IO.output(pinPi['mainMotor1'], False)
+			IO.output(pinPi['mainMotor2'], False)
+		elif speed == 1:
+			print("speed1!")
+			IO.output(pinPi['mainMotor1'], False)
+			IO.output(pinPi['mainMotor2'], True)
+		elif speed == 2:
+			print("speed2")
+			IO.output(pinPi['mainMotor1'], True)
+			IO.output(pinPi['mainMotor2'], False)
+		print("change speed\n")
+		lock.release()
 
 def changeDirection():
 	global direction
@@ -107,11 +102,8 @@ def ultraDistance():
 	global isObstacle
 
 	global process
-	StartTime = 0;
-	StopTime = 0;
-
 	while process == True:
-		time.sleep(0.1)
+		time.sleep(0.2)
 		lock.acquire()
 
 		IO.output(pinPi['ultraTrigger'], True)
@@ -119,7 +111,7 @@ def ultraDistance():
 		IO.output(pinPi['ultraTrigger'], False)
 		
 		initTime = time.time()
-		
+
 		while IO.input(pinPi['ultraEcho']) == False:
 			StartTime = time.time()
 			if StartTime-initTime > 1.5:
@@ -145,7 +137,7 @@ def ultraDistance():
 			
 		elif isObstacle == False:
 			speed = 1
-		
+		#
 		lock.release()
 
 
@@ -188,7 +180,7 @@ def compass():
 		headingAngle = int(heading * 180/pi)
 		
 		print("Heading Angle: %d" %headingAngle)
-		print("X: %d, Y: %d, Z: %d" %(xCompass,yCompass,zCompass))
+		#print("X: %d, Y: %d, Z: %d" %(xCompass,yCompass,zCompass))
 		lock.release()
 
 
@@ -209,36 +201,17 @@ def hall():
 		lock.release()
 		
 def infrared():
-	adc = Adafruit_ADS1x15.ADS1115()
-	adc = Adafruit_ADS1x15.ADS1115(address=0x49, busnum=1)
-	#12bit: 65536
-	detect = 30000
-
 	while process == True:
 		time.sleep(0.1)
+		
 		lock.acquire()
 
-		adcValues = [0]*4
+		isLeftSensored = 1 if IO.input(pinPi['infraL']) == True else 0
+		isCenterSensored = 2 if IO.input(pinPi['infraC']) == True else 0
+		isRightSensored = 4 if IO.input(pinPi['infraR']) == True else 0
 
-		for i in range(4):
-			#GAIN 
-			#1 = +-4.096V
-			#2 = +-2.048V	
-			values[i] = adc.read_adc(i, gain=1)
-		
-		print("ADC.A0: ", values[0])
-		print("ADC.A1: ", values[1])
-		print("ADC.A2: ", values[2])
-		print("ADC.A3: ", values[3])
-		
-		time.sleep(0.5)
-		
-		isLeftSensored = 0 if values[0] >= detect else 0
-		isCenterSensored = 2 if values[1] >= detect else 0
-		isRightSensored = 4 if values[2] >= detect == True else 0
-	
 		sensored = isLeftSensored + isCenterSensored + isRightSensored
-			
+		
 		if sensored == 1 and direction != 'right':
 			direction = 'right'
 			print("Change to Right")
@@ -251,7 +224,7 @@ def infrared():
 		else:
 			print("Infrared Sensor Error!!!")
 			time.sleep(1)
-			
+		
 		lock.release()
 
 def sendStatus():
@@ -277,25 +250,25 @@ time.sleep(0.5)
 
 print("Creating Threads")
 
-#tChangeSpeed = threading.Thread(target=changeSpeed)
-#tChangeSpeed.start()
-#print("Created Threads[tChangeSpeed]")
-#
-#tChangeDirection = threading.Thread(target=changeDirection)
-#tChangeDirection.start()
-#print("Created Threads[tChangeDirection]")
-#
-#tDistance = threading.Thread(target=ultraDistance)
-#tDistance.start()
-#print("Created Threads[tDistance]")
-#
-#tCompass = threading.Thread(target=compass)
-#tCompass.start()
-#print("Created Threads[tCompass]")
+tChangeSpeed = threading.Thread(target=changeSpeed)
+tChangeSpeed.start()
+print("Created Threads[tChangeSpeed]")
 
-#tHall = threading.Thread(target=hall)
-#tHall.start()
-#print("Created Threads[tHall]")
+tChangeDirection = threading.Thread(target=changeDirection)
+tChangeDirection.start()
+print("Created Threads[tChangeDirection]")
+
+tDistance = threading.Thread(target=ultraDistance)
+tDistance.start()
+print("Created Threads[tDistance]")
+
+tCompass = threading.Thread(target=compass)
+tCompass.start()
+print("Created Threads[tCompass]")
+
+tHall = threading.Thread(target=hall)
+tHall.start()
+print("Created Threads[tHall]")
 
 tInfrared = threading.Thread(target=infrared)
 tInfrared.start()
@@ -306,7 +279,7 @@ print ("Creating Threads Done!!")
 
 while 1:
 #	lock.acquire()
-#
+
 #	print("main\n")
 #	temp = input("dirction: ")
 #	if temp == 'l':
@@ -322,18 +295,18 @@ while 1:
 	time.sleep(1)
 
 
-#tDistance.join()
-#print("Joined Tread [tDistance]");
-#tChangeSpeed.join()
-#print("Joined Tread [tChangeSpeed]");
-#tChangeDirection.join()
-#print("Joined Tread [tChangeDirection]");
+tDistance.join()
+print("Joined Tread [tDistance]");
+tChangeSpeed.join()
+print("Joined Tread [tChangeSpeed]");
+tChangeDirection.join()
+print("Joined Tread [tChangeDirection]");
 tInfrared.join()
 print("Joined Tread [tInfrared]");
-#tCompass.join()
-#print("Joined Tread [tCompass]");
-#tHall.join()
-#print("Joined Tread [tJoin]");
+tCompass.join()
+print("Joined Tread [tCompass]");
+tHall.join()
+print("Joined Tread [tJoin]");
 
 print ("DONE")
 
