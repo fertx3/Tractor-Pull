@@ -15,18 +15,18 @@ device_reg_mode = 0x00
 i2cAddress = {'compass' : 0x1E, 'infrared' : 0x48}
 sensorBus = smbus.SMBus(channel)
 pi = 3.14159265359
+delay = 1 
 
 lock = threading.Lock()
 
 process = True
 
-#Infrared Sensors Ports are needed to modify
 #pin19 may be damaged
-
-pinPi = {'servoMotor': 13, 'mainMotor1': 5, 'mainMotor2': 26, 'hall':16, 'ultraTrigger' : 21, 'ultraEcho' : 20, 'infraL': 22, 'infraC': 23, 'infraR': 24}
+pinPi = {'servoMotor': 13, 'mainMotor1': 5, 'mainMotor2': 26, 'hall':16, 'ultraTrigger' : 21, 'ultraEcho' : 20, }
 
 #Max Value - Left: 1000 Center: 1500 Right: 2000
-directionVar = {'left': 1250, 'center':1520, 'right': 1770}
+directionVar = {'left': 1050, 'center':1550, 'right': 1950}
+#directionVar = {'left': 1250, 'center':1520, 'right': 1770}
 
 IO.setwarnings(False)           #do not show any warnings
 IO.setmode (IO.BCM)         #we are programming the GPIO by BCM pin numbers.
@@ -37,9 +37,9 @@ IO.setup(pinPi['ultraTrigger'],IO.OUT)
 IO.setup(pinPi['ultraEcho'],IO.IN)
 IO.setup(pinPi['hall'],IO.IN)
 
-IO.setup(pinPi['infraL'], IO.IN)
-IO.setup(pinPi['infraR'], IO.IN)
-IO.setup(pinPi['infraC'], IO.IN)
+#IO.setup(pinPi['infraL'], IO.IN)
+#IO.setup(pinPi['infraR'], IO.IN)
+#IO.setup(pinPi['infraC'], IO.IN)
 
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
 pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
@@ -51,7 +51,7 @@ speed = 0
 tractorConnected = False
 distance = 0
 isObstacle = False
-start = False
+start = True 
 
 def changeSpeed():
 	global speed
@@ -59,8 +59,8 @@ def changeSpeed():
 	currentSpeed = 0;
 	global process
 	while process == True:
-		time.sleep(0.2)
 		while start == True:	
+			time.sleep(delay)
 			lock.acquire()
 			if currentSpeed == speed:
 				lock.release()
@@ -89,7 +89,7 @@ def changeDirection():
 	
 	global process
 	while process == True:
-		time.sleep(0.2)
+		time.sleep(delay)
 		lock.acquire()
 		if currentDirection == direction:
 			lock.release()
@@ -97,7 +97,6 @@ def changeDirection():
 
 		currentDirection = direction
 		pinDirection.set_servo(pinPi['servoMotor'], directionVar[direction])
-		time.sleep(0.5)
 		lock.release()
 		print("change Direction\n")
 
@@ -111,9 +110,9 @@ def ultraDistance():
 	StopTime = 0;
 
 	while process == True:
-		time.sleep(0.1)
+		time.sleep(delay)
 		lock.acquire()
-
+		time.sleep(0.0001)
 		IO.output(pinPi['ultraTrigger'], True)
 		time.sleep(0.00001)
 		IO.output(pinPi['ultraTrigger'], False)
@@ -139,11 +138,11 @@ def ultraDistance():
 			continue #less than 1cm is error	
 		print("%.1f cm" %distance)
 		#test code
-		if distance < 60.0:
+		if distance < 60.0 and speed == 1:
 			speed = 0
 			#isObstacle = True
 			
-		elif isObstacle == False:
+		elif distance > 70.0 and isObstacle == False:
 			speed = 1
 		
 		lock.release()
@@ -156,34 +155,50 @@ def compass():
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x01, 0xA0)
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x02, 0x00)
 	
+	X_axis_H    = 0x03              #Address of X-axis MSB data register
+	Z_axis_H    = 0x05              #Address of Z-axis MSB data register
+	Y_axis_H    = 0x07              #Address of Y-axis MSB data register
+	
 	time.sleep(0.5)
-
+	heading = 0.0
 	global process
 	while process == True:
-		time.sleep(0.2)
+		time.sleep(delay)
 		lock.acquire()
 
-		rawCompass = sensorBus.read_i2c_block_data(i2cAddress['compass'], 0x03, 6)
-		xCompass = rawCompass[0] * 256 + rawCompass[1]
-		yCompass = rawCompass[2] * 256 + rawCompass[3]
-		zCompass = rawCompass[4] * 256 + rawCompass[5]
+		#rawCompass = sensorBus.read_i2c_block_data(i2cAddress['compass'], 0x03, 6)
+		#xCompass = rawCompass[0] * 256 + rawCompass[1]
+		#zCompass = rawCompass[2] * 256 + rawCompass[3]
+		#yCompass = rawCompass[4] * 256 + rawCompass[5]
+		
+		high = sensorBus.read_byte_data(i2cAddress['compass'], X_axis_H)
+		low = sensorBus.read_byte_data(i2cAddress['compass'], X_axis_H+1)
+		xCompass = ((high<<8) | low)
 
-		if xCompass > 32767:
+		high = sensorBus.read_byte_data(i2cAddress['compass'], Z_axis_H)
+		low = sensorBus.read_byte_data(i2cAddress['compass'], Z_axis_H+1)
+		zCompass = ((high<<8) | low)
+
+		high = sensorBus.read_byte_data(i2cAddress['compass'], Y_axis_H)
+		low = sensorBus.read_byte_data(i2cAddress['compass'], Y_axis_H+1)
+		yCompass = ((high<<8) | low)
+
+		if xCompass > 32768:
 			xCompass = xCompass - 65536
 
-		if yCompass > 32767:
+		if yCompass > 32768:
 			yCompass = yCompass - 65536
 
-		if zCompass > 32767:
+		if zCompass > 32768:
 			zCompass = zCompass - 65536
 		
 		heading = math.atan2(yCompass, xCompass)
 
 		if(heading > 2*pi):
-			heading = heading - 2*pi
+			heading = heading - 2.0*pi
 
 		if(heading < 0):
-			heading = heading + 2*pi
+			heading = heading + 2.0*pi
 
 		headingAngle = int(heading * 180/pi)
 		
@@ -197,7 +212,7 @@ def hall():
 
 	global process
 	while process == True:
-		time.sleep(0.2)
+		time.sleep(delay)
 		lock.acquire()
 
 		if IO.input(pinPi['hall']) == True:
@@ -210,12 +225,14 @@ def hall():
 		
 def infrared():
 	adc = Adafruit_ADS1x15.ADS1115()
-	adc = Adafruit_ADS1x15.ADS1115(address=0x49, busnum=1)
+	#adc = Adafruit_ADS1x15.ADS1115(address=0x49, busnum=1)
 	#12bit: 65536
-	detect = 30000
+	global direction
 
+	detect = 20000
+	
 	while process == True:
-		time.sleep(0.1)
+		time.sleep(delay)
 		lock.acquire()
 
 		adcValues = [0]*4
@@ -224,34 +241,32 @@ def infrared():
 			#GAIN 
 			#1 = +-4.096V
 			#2 = +-2.048V	
-			values[i] = adc.read_adc(i, gain=1)
+			adcValues[i] = adc.read_adc(i, gain=1)
 		
-		print("ADC.A0: ", values[0])
-		print("ADC.A1: ", values[1])
-		print("ADC.A2: ", values[2])
-		print("ADC.A3: ", values[3])
+		print("ADC.A0: ", adcValues[0])
+		print("ADC.A1: ", adcValues[1])
+		print("ADC.A2: ", adcValues[2])
+		print("ADC.A3: ", adcValues[3])
 		
-		time.sleep(0.5)
 		
-		isLeftSensored = 0 if values[0] >= detect else 0
-		isCenterSensored = 2 if values[1] >= detect else 0
-		isRightSensored = 4 if values[2] >= detect == True else 0
+		isLeftSensored = 1 if adcValues[0] >= detect else 0
+		isCenterSensored = 2 if adcValues[1] >= detect else 0
+		isRightSensored = 4 if adcValues[2] >= detect else 0
 	
 		sensored = isLeftSensored + isCenterSensored + isRightSensored
-			
-		if sensored == 1 and direction != 'right':
-			direction = 'right'
-			print("Change to Right")
+		print("Current.Derection = %s, Line Detection: %d" %(direction, sensored))		
+		if sensored == 1 and direction != 'left':
+			direction = 'left'
+			print("Change to left")
 		elif sensored == 2 and direction != 'center':
 			direction = 'center'
 			print("Change to Center")
-		elif sensored == 4 and direction != 'left':
-			direction = 'left'
-			print("Change to Left")
-		else:
-			print("Infrared Sensor Error!!!")
-			time.sleep(1)
-			
+		elif sensored == 4 and direction != 'right':
+			direction = 'right'
+			print("Change to right")
+		elif sensored == 10:
+			print("Detect Horizontal Line")
+		os.system('clear')
 		lock.release()
 
 def sendStatus():
@@ -289,22 +304,22 @@ print("Creating Threads")
 #tDistance.start()
 #print("Created Threads[tDistance]")
 #
-#tCompass = threading.Thread(target=compass)
-#tCompass.start()
-#print("Created Threads[tCompass]")
+tCompass = threading.Thread(target=compass)
+tCompass.start()
+print("Created Threads[tCompass]")
 
 #tHall = threading.Thread(target=hall)
 #tHall.start()
 #print("Created Threads[tHall]")
 
-tInfrared = threading.Thread(target=infrared)
-tInfrared.start()
-print("Created Threads[tInfrared]")
+#tInfrared = threading.Thread(target=infrared)
+#tInfrared.start()
+#print("Created Threads[tInfrared]")
 
 print ("Creating Threads Done!!")
 
 
-while 1:
+#while 1:
 #	lock.acquire()
 #
 #	print("main\n")
@@ -319,7 +334,7 @@ while 1:
 #		print("Wrong input")
 #	speed = int(input("speed [0-2]:"))
 #	lock.release()
-	time.sleep(1)
+#	time.sleep(1)
 
 
 #tDistance.join()
@@ -328,10 +343,10 @@ while 1:
 #print("Joined Tread [tChangeSpeed]");
 #tChangeDirection.join()
 #print("Joined Tread [tChangeDirection]");
-tInfrared.join()
-print("Joined Tread [tInfrared]");
-#tCompass.join()
-#print("Joined Tread [tCompass]");
+#tInfrared.join()
+#print("Joined Tread [tInfrared]");
+tCompass.join()
+print("Joined Tread [tCompass]");
 #tHall.join()
 #print("Joined Tread [tJoin]");
 
