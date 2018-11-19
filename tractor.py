@@ -155,10 +155,6 @@ def compass():
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x01, 0xA0)
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x02, 0x00)
 	
-	X_axis_H    = 0x03              #Address of X-axis MSB data register
-	Z_axis_H    = 0x05              #Address of Z-axis MSB data register
-	Y_axis_H    = 0x07              #Address of Y-axis MSB data register
-	
 	time.sleep(0.5)
 	heading = 0.0
 	global process
@@ -166,22 +162,11 @@ def compass():
 		time.sleep(delay)
 		lock.acquire()
 
-		#rawCompass = sensorBus.read_i2c_block_data(i2cAddress['compass'], 0x03, 6)
-		#xCompass = rawCompass[0] * 256 + rawCompass[1]
-		#zCompass = rawCompass[2] * 256 + rawCompass[3]
-		#yCompass = rawCompass[4] * 256 + rawCompass[5]
+		rawCompass = sensorBus.read_i2c_block_data(i2cAddress['compass'], 0x03, 6)
+		xCompass = rawCompass[0] * 256 + rawCompass[1]
+		zCompass = rawCompass[2] * 256 + rawCompass[3]
+		yCompass = rawCompass[4] * 256 + rawCompass[5]
 		
-		high = sensorBus.read_byte_data(i2cAddress['compass'], X_axis_H)
-		low = sensorBus.read_byte_data(i2cAddress['compass'], X_axis_H+1)
-		xCompass = ((high<<8) | low)
-
-		high = sensorBus.read_byte_data(i2cAddress['compass'], Z_axis_H)
-		low = sensorBus.read_byte_data(i2cAddress['compass'], Z_axis_H+1)
-		zCompass = ((high<<8) | low)
-
-		high = sensorBus.read_byte_data(i2cAddress['compass'], Y_axis_H)
-		low = sensorBus.read_byte_data(i2cAddress['compass'], Y_axis_H+1)
-		yCompass = ((high<<8) | low)
 
 		if xCompass > 32768:
 			xCompass = xCompass - 65536
