@@ -158,7 +158,7 @@ def compass():
 	time.sleep(0.5)
 	heading = 0.0
 	#London Declination Angle: 8.58
-	declination = (8.0 + (58.0 / 60.0)) / (180/pi)
+	declination = ((8.0 + (58.0 / 60.0)) / (180/pi))
 	global process
 	while process == True:
 		time.sleep(delay)
@@ -331,7 +331,7 @@ print ("Creating Threads Done!!")
 
 #while 1:
 #	lock.acquire()
-#
+
 #	print("main\n")
 #	temp = input("dirction: ")
 #	if temp == 'l':
