@@ -157,6 +157,8 @@ def compass():
 	
 	time.sleep(0.5)
 	heading = 0.0
+	#London Declination Angle: 8.58
+	declination = (8.0 + (58.0 / 60.0)) / (180/pi)
 	global process
 	while process == True:
 		time.sleep(delay)
@@ -178,17 +180,40 @@ def compass():
 			zCompass = zCompass - 65536
 		
 		heading = math.atan2(yCompass, xCompass)
-
-		if(heading > 2*pi):
-			heading = heading - 2.0*pi
+		heading = heading + declination
 
 		if(heading < 0):
 			heading = heading + 2.0*pi
+
+		if(heading > 2*pi):
+			heading = heading - 2.0*pi
 
 		headingAngle = int(heading * 180/pi)
 		
 		print("Heading Angle: %d" %headingAngle)
 		print("X: %d, Y: %d, Z: %d" %(xCompass,yCompass,zCompass))
+		
+		if (headingAngle < 23 or headingAngle > 338):
+			compass = "N"
+		elif (headingAngle < 68):
+			compass = "NE"
+		elif (headingAngle < 113):
+			compass = "E"
+		elif (headingAngle < 158):
+			compass = "SE"
+		elif (headingAngle < 203):
+			compass = "S"
+		elif (headingAngle < 248):
+			compass = "SW"
+		elif (headingAngle < 293):
+			compass = "W"
+		elif (headingAngle < 338):
+			compass = "NW"
+		else:
+			compass = "Huh???"
+
+		print("Compass:",compass)
+
 		lock.release()
 
 
