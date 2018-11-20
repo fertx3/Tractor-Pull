@@ -265,18 +265,18 @@ def infrared():
 	
 		sensored = isLeftSensored + isCenterSensored + isRightSensored
 		print("Current.Derection = %s, Line Detection: %d" %(direction, sensored))		
-		if sensored == 1 and direction != 'left':
+		if (sensored == 1 or sensored == 3) and direction != 'left':
 			direction = 'left'
 			print("Change to left")
 		elif sensored == 2 and direction != 'center':
 			direction = 'center'
 			print("Change to Center")
-		elif sensored == 4 and direction != 'right':
+		elif (sensored == 4 or sensored == 6) and direction != 'right':
 			direction = 'right'
 			print("Change to right")
-		elif sensored == 10:
+		elif sensored == 7:
 			print("Detect Horizontal Line")
-		os.system('clear')
+		#os.system('clear')
 		lock.release()
 
 def sendStatus():
