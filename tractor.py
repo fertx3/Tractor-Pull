@@ -297,8 +297,8 @@ def sendStatus():
 	lock.release()
 
 os.system('clear')
-print("Project [Tractor Pull] Start!!!")
-time.sleep(0.5)
+print("Project [Tractor-Pull] Start!!!")
+time.sleep(1)
 
 print("Creating Threads")
 
@@ -350,15 +350,17 @@ print ("Creating Threads Done!!")
 #tDistance.join()
 #print("Joined Tread [tDistance]");
 #tChangeSpeed.join()
-#print("Joined Tread [tChangeSpeed]");
-#tChangeDirection.join()
-#print("Joined Tread [tChangeDirection]");
-#tInfrared.join()
 #print("Joined Tread [tInfrared]");
 tCompass.join()
 print("Joined Tread [tCompass]");
 #tHall.join()
 #print("Joined Tread [tJoin]");
 
-print ("DONE")
+#print("Joined Tread [tChangeSpeed]");
+#tChangeDirection.join()
+
+#print("Joined Tread [tChangeDirection]");
+#tInfrared.join()
+
+print ("Project [Tractor-Pull] DONE!!!")
 
