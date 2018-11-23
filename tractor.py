@@ -238,6 +238,7 @@ def infrared():
 	#adc = Adafruit_ADS1x15.ADS1115(address=0x49, busnum=1)
 	#12bit: 65536
 	global direction
+	global speed
 
 	detect = 20000
 	
@@ -276,6 +277,8 @@ def infrared():
 			print("Change to right")
 		elif sensored == 7:
 			print("Detect Horizontal Line")
+		else:
+			speed = 0;
 		#os.system('clear')
 		lock.release()
 
