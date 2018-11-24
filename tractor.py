@@ -4,10 +4,22 @@ from RPIO import PWM
 import Adafruit_ADS1x15
 import time                #calling time to provide delays in program
 import threading
-import curses
+
 import smbus 
 import math
 import os
+import sys
+
+import paho.mqtt.client as mqtt
+import paho.mqtt.publish as publish
+
+if len(sys.argv) != 2:
+	print("Usage:", sys.argv[0], "<Controller IP Address>")
+	sys.exit()
+
+#mqtt configuration
+#ip = "172.22.20.29"
+ip = sys.argv[1]
 
 #I2C Setup
 channel = 1
@@ -26,7 +38,6 @@ pinPi = {'servoMotor': 13, 'mainMotor1': 5, 'mainMotor2': 26, 'hall':16, 'ultraT
 
 #Max Value - Left: 1000 Center: 1500 Right: 2000
 directionVar = {'left': 1050, 'center':1550, 'right': 1950}
-#directionVar = {'left': 1250, 'center':1520, 'right': 1770}
 
 IO.setwarnings(False)           #do not show any warnings
 IO.setmode (IO.BCM)         #we are programming the GPIO by BCM pin numbers.
@@ -37,21 +48,18 @@ IO.setup(pinPi['ultraTrigger'],IO.OUT)
 IO.setup(pinPi['ultraEcho'],IO.IN)
 IO.setup(pinPi['hall'],IO.IN)
 
-#IO.setup(pinPi['infraL'], IO.IN)
-#IO.setup(pinPi['infraR'], IO.IN)
-#IO.setup(pinPi['infraC'], IO.IN)
-
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
 pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
 
-compass = ''
 direction = 'center'
 
+compass = "N"
 speed = 0
-tractorConnected = False
+isTractorConnected = False
 distance = 0
-isObstacle = False
-start = True 
+isObstacle = False 
+isOnLine = True
+start = False 
 
 def changeSpeed():
 	global speed
@@ -72,11 +80,11 @@ def changeSpeed():
 				print("speed0!!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], False)
-			elif speed == 1:
+			elif speed == 1 and isOnLine:
 				print("speed1!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], True)
-			elif speed == 2:
+			elif speed == 2 and isOnline:
 				print("speed2")
 				IO.output(pinPi['mainMotor1'], True)
 				IO.output(pinPi['mainMotor2'], False)
@@ -148,7 +156,7 @@ def ultraDistance():
 		lock.release()
 
 
-def compass():
+def measureCompass():
 	global compass
 
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x00, 0x70)
@@ -218,7 +226,7 @@ def compass():
 
 
 def hall():
-	global tractorConnected
+	global isTractorConnected
 
 	global process
 	while process == True:
@@ -226,10 +234,10 @@ def hall():
 		lock.acquire()
 
 		if IO.input(pinPi['hall']) == True:
-			tractorConnected = True
+			isTractorConnected = True
 			print("Tractor Connected")
 		else:
-			tractorConnected = False
+			isTractorConnected = False
 			print("Tractor Not Connected")
 		lock.release()
 		
@@ -239,7 +247,7 @@ def infrared():
 	#12bit: 65536
 	global direction
 	global speed
-
+	global isOnLine
 	detect = 20000
 	
 	while process == True:
@@ -268,21 +276,50 @@ def infrared():
 		print("Current.Derection = %s, Line Detection: %d" %(direction, sensored))		
 		if (sensored == 1 or sensored == 3) and direction != 'left':
 			direction = 'left'
+			isOnline = True
 			print("Change to left")
 		elif sensored == 2 and direction != 'center':
 			direction = 'center'
+			isOnline = True
 			print("Change to Center")
 		elif (sensored == 4 or sensored == 6) and direction != 'right':
 			direction = 'right'
+			isOnline = True
 			print("Change to right")
 		elif sensored == 7:
 			print("Detect Horizontal Line")
 		else:
+			isOnline = False
 			speed = 0;
 		#os.system('clear')
 		lock.release()
 
-def sendStatus():
+def on_connect(client, userdata, flags, rc):
+     
+    # Subscribing in on_connect() - if we lose the connection and
+    # reconnect then subscriptions will be renewed.
+    client.subscribe("Compass")
+    client.subscribe("Current")
+    client.subscribe("Obsticle")
+    client.subscribe("Trailer")
+    client.subscribe("Start")
+    client.subscribe("Power")
+    client.subscribe("Error")
+
+# The callback for when a PUBLISH message is received from the server.
+def on_message(client, userdata, msg):
+	global start
+	#print ()
+	#print (msg.topic)
+	#print (msg.payload.decode() )
+
+	if msg.topic == "Start":
+		#payload either 0, 1, or 2
+		start = True if msg.payload.decode() == "True" else False
+		print(start)
+
+def transferStatus():
+
 	global process
 	global mainMotor1
 	global mainMotor2
@@ -291,19 +328,39 @@ def sendStatus():
 	global isObstacle
 	global distance
 	global compass
+	global isTractorConnected
 
-	lock.acquire()
-	time.sleep(0.2)
-	print("Main Motor1:", mainMotor1)
-	print("Main Motor2:", mainMotor2)
-	print("Direction: ", direction)
-	lock.release()
+	errorMsg = ""
 
+	client = mqtt.Client()
+	client.on_connect = on_connect
+	client.on_message = on_message
+	 
+	client.connect(ip, 1883, 60)
+
+	while True:
+		lock.acquire()
+		client.loop_start()
+		print("pubslish")
+		publish.single("Compass", compass, hostname=ip)
+		publish.single("Current","0", hostname=ip)
+		publish.single("Obsticle",isObstacle, hostname=ip)
+		publish.single("Trailer",isTractorConnected, hostname=ip)
+		publish.single("Error", errorMsg, hostname=ip)		
+		print("published")
+		client.loop_stop()
+		lock.release()
+		time.sleep(1)
+	
 os.system('clear')
 print("Project [Tractor-Pull] Start!!!")
 time.sleep(1)
 
 print("Creating Threads")
+
+tStatus = threading.Thread(target=transferStatus)
+tStatus.start()
+print("Created Threads[tStatus]")
 
 #tChangeSpeed = threading.Thread(target=changeSpeed)
 #tChangeSpeed.start()
@@ -317,9 +374,9 @@ print("Creating Threads")
 #tDistance.start()
 #print("Created Threads[tDistance]")
 #
-tCompass = threading.Thread(target=compass)
-tCompass.start()
-print("Created Threads[tCompass]")
+#tCompass = threading.Thread(target=measureCompass)
+#tCompass.start()
+#print("Created Threads[tCompass]")
 
 #tHall = threading.Thread(target=hall)
 #tHall.start()
@@ -332,7 +389,9 @@ print("Created Threads[tCompass]")
 print ("Creating Threads Done!!")
 
 
-#while 1:
+while 1:
+
+	print("Start", start)
 #	lock.acquire()
 
 #	print("main\n")
@@ -347,15 +406,15 @@ print ("Creating Threads Done!!")
 #		print("Wrong input")
 #	speed = int(input("speed [0-2]:"))
 #	lock.release()
-#	time.sleep(1)
+	time.sleep(1)
 
-
+tStatus.join()
 #tDistance.join()
 #print("Joined Tread [tDistance]");
 #tChangeSpeed.join()
 #print("Joined Tread [tInfrared]");
-tCompass.join()
-print("Joined Tread [tCompass]");
+#tCompass.join()
+#print("Joined Tread [tCompass]");
 #tHall.join()
 #print("Joined Tread [tJoin]");
 
@@ -364,6 +423,8 @@ print("Joined Tread [tCompass]");
 
 #print("Joined Tread [tChangeDirection]");
 #tInfrared.join()
+
+
 
 print ("Project [Tractor-Pull] DONE!!!")
 
