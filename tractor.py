@@ -2,13 +2,13 @@
 import RPi.GPIO as IO    #calling header file which helps us use GPIO’s of PI
 from RPIO import PWM
 import Adafruit_ADS1x15
-import time                #calling time to provide delays in program
-import threading
+import smbus
 
-import smbus 
 import math
 import os
 import sys
+import time                #calling time to provide delays in program
+import threading
 
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
@@ -27,7 +27,7 @@ device_reg_mode = 0x00
 i2cAddress = {'compass' : 0x1E, 'infrared' : 0x48}
 sensorBus = smbus.SMBus(channel)
 pi = 3.14159265359
-delay = 1 
+delay = 1
 
 lock = threading.Lock()
 
@@ -57,9 +57,11 @@ compass = "N"
 speed = 0
 isTractorConnected = False
 distance = 0
-isObstacle = False 
+isObstacle = False
 isOnLine = True
-start = False 
+isEndLine = False
+start = False
+isOnceConnected = False
 
 def changeSpeed():
 	global speed
@@ -67,24 +69,24 @@ def changeSpeed():
 	currentSpeed = 0;
 	global process
 	while process == True:
-		while start == True:	
+		while start == True:
 			time.sleep(delay)
 			lock.acquire()
 			if currentSpeed == speed:
 				lock.release()
 				continue
-			
+
 			currentSpeed = speed;
 			print("speed: ",speed)
 			if speed == 0:
 				print("speed0!!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], False)
-			elif speed == 1 and isOnLine:
+			elif speed == 1 and isOnLine and not isEndLine:
 				print("speed1!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], True)
-			elif speed == 2 and isOnline:
+			elif speed == 2 and isOnline and not isEndLine:
 				print("speed2")
 				IO.output(pinPi['mainMotor1'], True)
 				IO.output(pinPi['mainMotor2'], False)
@@ -94,12 +96,12 @@ def changeSpeed():
 def changeDirection():
 	global direction
 	currentDirection = 'center'
-	
+
 	global process
 	while process == True:
 		time.sleep(delay)
 		lock.acquire()
-		if currentDirection == direction:
+		if currentDirection == direction or not isOnLine or isEndLine:
 			lock.release()
 			continue
 
@@ -112,6 +114,8 @@ def ultraDistance():
 	global speed
 	global distance
 	global isObstacle
+	global isEndLine
+	global isOnLine
 
 	global process
 	StartTime = 0;
@@ -124,9 +128,9 @@ def ultraDistance():
 		IO.output(pinPi['ultraTrigger'], True)
 		time.sleep(0.00001)
 		IO.output(pinPi['ultraTrigger'], False)
-		
+
 		initTime = time.time()
-		
+
 		while IO.input(pinPi['ultraEcho']) == False:
 			StartTime = time.time()
 			if StartTime-initTime > 1.5:
@@ -139,20 +143,19 @@ def ultraDistance():
 				break
 		TimeElapsed = StopTime - StartTime
 		distance = round((TimeElapsed * 17150),2)
-		
+
 		if distance < 1.0:
 			print("Distance Less than 1.0")
 			lock.release()
-			continue #less than 1cm is error	
+			continue #less than 1cm is error
 		print("%.1f cm" %distance)
 		#test code
 		if distance < 60.0 and speed == 1:
 			speed = 0
-			#isObstacle = True
-			
-		elif distance > 70.0 and isObstacle == False:
+			isObstacle = True
+		elif distance > 70.0 and isObstacle == False and not isEndLine and isOnLine:
 			speed = 1
-		
+
 		lock.release()
 
 
@@ -162,7 +165,7 @@ def measureCompass():
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x00, 0x70)
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x01, 0xA0)
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x02, 0x00)
-	
+
 	time.sleep(0.5)
 	heading = 0.0
 	#London Declination Angle: 8.58
@@ -176,7 +179,6 @@ def measureCompass():
 		xCompass = rawCompass[0] * 256 + rawCompass[1]
 		zCompass = rawCompass[2] * 256 + rawCompass[3]
 		yCompass = rawCompass[4] * 256 + rawCompass[5]
-		
 
 		if xCompass > 32768:
 			xCompass = xCompass - 65536
@@ -186,7 +188,7 @@ def measureCompass():
 
 		if zCompass > 32768:
 			zCompass = zCompass - 65536
-		
+
 		heading = math.atan2(yCompass, xCompass)
 		heading = heading + declination
 
@@ -197,10 +199,10 @@ def measureCompass():
 			heading = heading - 2.0*pi
 
 		headingAngle = int(heading * 180/pi)
-		
+
 		print("Heading Angle: %d" %headingAngle)
 		print("X: %d, Y: %d, Z: %d" %(xCompass,yCompass,zCompass))
-		
+
 		if (headingAngle < 23 or headingAngle > 338):
 			compass = "N"
 		elif (headingAngle < 68):
@@ -235,12 +237,17 @@ def hall():
 
 		if IO.input(pinPi['hall']) == True:
 			isTractorConnected = True
+			isOnceConnected = True
 			print("Tractor Connected")
 		else:
 			isTractorConnected = False
 			print("Tractor Not Connected")
+
+		if isOnceConnected == True and isTractorConnected == False
+			speed = 0
+
 		lock.release()
-		
+
 def infrared():
 	adc = Adafruit_ADS1x15.ADS1115()
 	#adc = Adafruit_ADS1x15.ADS1115(address=0x49, busnum=1)
@@ -248,8 +255,10 @@ def infrared():
 	global direction
 	global speed
 	global isOnLine
+	global isEndLine
+
 	detect = 20000
-	
+
 	while process == True:
 		time.sleep(delay)
 		lock.acquire()
@@ -257,23 +266,22 @@ def infrared():
 		adcValues = [0]*4
 
 		for i in range(4):
-			#GAIN 
+			#GAIN
 			#1 = +-4.096V
-			#2 = +-2.048V	
+			#2 = +-2.048V
 			adcValues[i] = adc.read_adc(i, gain=1)
-		
+
 		print("ADC.A0: ", adcValues[0])
 		print("ADC.A1: ", adcValues[1])
 		print("ADC.A2: ", adcValues[2])
 		print("ADC.A3: ", adcValues[3])
-		
-		
+
 		isLeftSensored = 1 if adcValues[0] >= detect else 0
 		isCenterSensored = 2 if adcValues[1] >= detect else 0
 		isRightSensored = 4 if adcValues[2] >= detect else 0
-	
+
 		sensored = isLeftSensored + isCenterSensored + isRightSensored
-		print("Current.Derection = %s, Line Detection: %d" %(direction, sensored))		
+		print("Current.Derection = %s, Line Detection: %d" %(direction, sensored))
 		if (sensored == 1 or sensored == 3) and direction != 'left':
 			direction = 'left'
 			isOnline = True
@@ -288,6 +296,8 @@ def infrared():
 			print("Change to right")
 		elif sensored == 7:
 			print("Detect Horizontal Line")
+			speed = 0:
+			isEndLine = True
 		else:
 			isOnline = False
 			speed = 0;
@@ -295,7 +305,7 @@ def infrared():
 		lock.release()
 
 def on_connect(client, userdata, flags, rc):
-     
+
     # Subscribing in on_connect() - if we lose the connection and
     # reconnect then subscriptions will be renewed.
     client.subscribe("Compass")
@@ -319,14 +329,11 @@ def on_message(client, userdata, msg):
 		print(start)
 
 def transferStatus():
-
 	global process
-	global mainMotor1
-	global mainMotor2
 	global speed
 	global direction
 	global isObstacle
-	global distance
+	global isEndLine
 	global compass
 	global isTractorConnected
 
@@ -335,7 +342,7 @@ def transferStatus():
 	client = mqtt.Client()
 	client.on_connect = on_connect
 	client.on_message = on_message
-	 
+
 	client.connect(ip, 1883, 60)
 
 	while True:
@@ -346,12 +353,20 @@ def transferStatus():
 		publish.single("Current","0", hostname=ip)
 		publish.single("Obsticle",isObstacle, hostname=ip)
 		publish.single("Trailer",isTractorConnected, hostname=ip)
-		publish.single("Error", errorMsg, hostname=ip)		
+		if isObstacle:
+			publish.single("Error", "Obstacle Found", hostname=ip)
+		elif isEndLine:
+			publish.single("Error", "Finished", hostname=ip)
+		elif isOnceConnected and isTractorConnected == False:
+			publish.single("Error", "Tractor Disconnected", hostname=ip)
+		elif isOnLine == False:
+			publish.single("Error", "Tractor is not on the lines", hostname=ip)
+
 		print("published")
 		client.loop_stop()
 		lock.release()
 		time.sleep(1)
-	
+
 os.system('clear')
 print("Project [Tractor-Pull] Start!!!")
 time.sleep(1)
@@ -427,4 +442,3 @@ tStatus.join()
 
 
 print ("Project [Tractor-Pull] DONE!!!")
-
