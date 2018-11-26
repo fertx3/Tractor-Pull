@@ -1,4 +1,15 @@
 # -*- coding: utf-8 -*-
+##############################################################################################
+#	Project Name:	Tractor Pull
+#	Author:			Sangman Choi
+#	Date:			Nov 25, 2018
+#	Modified:		None
+#	Copyright Sangman Choi, 2018
+#
+#	Desc: Control the truck pulling a trailer. Using sensors for Motor Control and relay a trailer
+#
+##############################################################################################
+
 import RPi.GPIO as IO    #calling header file which helps us use GPIO’s of PI
 from RPIO import PWM
 import Adafruit_ADS1x15
@@ -39,20 +50,23 @@ pinPi = {'servoMotor': 13, 'mainMotor1': 5, 'mainMotor2': 26, 'hall':16, 'ultraT
 #Max Value - Left: 1000 Center: 1500 Right: 2000
 directionVar = {'left': 1050, 'center':1550, 'right': 1950}
 
-IO.setwarnings(False)           #do not show any warnings
-IO.setmode (IO.BCM)         #we are programming the GPIO by BCM pin numbers.
-IO.setup(pinPi['servoMotor'],IO.OUT)           # initialize GPIO19 as an output.
+IO.setwarnings(False)          			#do not show any warnings
+IO.setmode (IO.BCM)     			    #Programming the GPIO by BCM pin numbers.
+
+#IO Initialize
+IO.setup(pinPi['servoMotor'],IO.OUT)
 IO.setup(pinPi['mainMotor1'],IO.OUT)
 IO.setup(pinPi['mainMotor2'],IO.OUT)
 IO.setup(pinPi['ultraTrigger'],IO.OUT)
 IO.setup(pinPi['ultraEcho'],IO.IN)
 IO.setup(pinPi['hall'],IO.IN)
 
+#Initialize PWM signal for Servomotor
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
 pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
 
+#Initialize Global Variables
 direction = 'center'
-
 compass = "N"
 speed = 0
 isTractorConnected = False
@@ -61,13 +75,25 @@ isObstacle = False
 isOnLine = True
 isEndLine = False
 start = False
-isOnceConnected = False
+isDisconnected = False
 
+##changeSpeed###################################################################################
+#	Author:		Sangman Choi
+#	Date:		Nov 25, 2018
+#	Modified:	None
+#	Desc: Change Speed of main motor
+#	Input: Start, Process, isEndLine, isOnLine
+#	Output: Speed from 0(Stop) to 2(Maximum)
+##############################################################################################
 def changeSpeed():
 	global speed
 	global start
-	currentSpeed = 0;
 	global process
+	global isEndLine
+	global isOnLine
+
+	currentSpeed = 0;
+
 	while process == True:
 		while start == True:
 			time.sleep(delay)
@@ -82,26 +108,40 @@ def changeSpeed():
 				print("speed0!!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], False)
-			elif speed == 1 and isOnLine and not isEndLine:
+			elif speed == 1 and isOnLine and not isEndLine and not isDisconnected:
 				print("speed1!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], True)
-			elif speed == 2 and isOnline and not isEndLine:
+			elif speed == 2 and isOnline and not isEndLine and not isDisconnected:
 				print("speed2")
 				IO.output(pinPi['mainMotor1'], True)
 				IO.output(pinPi['mainMotor2'], False)
 			print("change speed\n")
 			lock.release()
+##EO:changeSpeed################################################################################
+
+##changeDirection###################################################################################
+#	Author:		Sangman Choi
+#	Date:		Nov 25, 2018
+#	Modified:	None
+#	Desc: Change Direction of Servo motor
+#	Input: Direction, isEndLine, isOnLine, isDisconnected
+#	Output: PWM Signal for Servo Motor
+##############################################################################################
 
 def changeDirection():
 	global direction
+	global isOnLine
+	global isEndLine
+	global isDisconnected
+
 	currentDirection = 'center'
 
 	global process
 	while process == True:
 		time.sleep(delay)
 		lock.acquire()
-		if currentDirection == direction or not isOnLine or isEndLine:
+		if currentDirection == direction or not isOnLine or isEndLine or isDisconnected:
 			lock.release()
 			continue
 
@@ -109,13 +149,21 @@ def changeDirection():
 		pinDirection.set_servo(pinPi['servoMotor'], directionVar[direction])
 		lock.release()
 		print("change Direction\n")
+##EO:changeDirection################################################################################
+
+##ultraDistance###################################################################################
+#	Author:		Sangman Choi
+#	Date:		Nov 25, 2018
+#	Modified:	None
+#	Desc: Measure the distace from front (60cm)
+#	Input: Ultrasonic Sensor(Trig, Echo)
+#	Output: Distance, Speed, Exist of Obstacle
+##############################################################################################
 
 def ultraDistance():
 	global speed
 	global distance
 	global isObstacle
-	global isEndLine
-	global isOnLine
 
 	global process
 	StartTime = 0;
@@ -149,15 +197,24 @@ def ultraDistance():
 			lock.release()
 			continue #less than 1cm is error
 		print("%.1f cm" %distance)
-		#test code
 		if distance < 60.0 and speed == 1:
 			speed = 0
 			isObstacle = True
-		elif distance > 70.0 and isObstacle == False and not isEndLine and isOnLine:
+		elif distance > 70.0
+			isObstacle =False
 			speed = 1
 
 		lock.release()
+##EO:ultraDistance################################################################################
 
+##measureCompass###################################################################################
+#	Author:		Sangman Choi
+#	Date:		Nov 25, 2018
+#	Modified:	None
+#	Desc: Measure Direction of Truck
+#	Input: Compass Sensor(I2C)
+#	Output: Direction of Truck
+##############################################################################################
 
 def measureCompass():
 	global compass
@@ -225,10 +282,21 @@ def measureCompass():
 		print("Compass:",compass)
 
 		lock.release()
+##EO:measureCompass################################################################################
 
+##hall###################################################################################
+#	Author:		Sangman Choi
+#	Date:		Nov 25, 2018
+#	Modified:	None
+#	Desc: Check Tractor is connected or not
+#	Input: Hall Effect Sensor
+#	return: isTractorConnected, isDisconnected
+##############################################################################################
 
 def hall():
 	global isTractorConnected
+	global isDisconnected
+	isOnceConnected = False
 
 	global process
 	while process == True:
@@ -244,9 +312,20 @@ def hall():
 			print("Tractor Not Connected")
 
 		if isOnceConnected == True and isTractorConnected == False
+			isDisconnected = True
 			speed = 0
 
 		lock.release()
+##EO:hall################################################################################
+
+##infrared###################################################################################
+#	Author:		Sangman Choi
+#	Date:		Nov 25, 2018
+#	Modified:	None
+#	Desc: Change Speed of main motor
+#	Input: Infrared Sensors(I2C)
+#	return: Direction to change
+##############################################################################################
 
 def infrared():
 	adc = Adafruit_ADS1x15.ADS1115()
@@ -299,10 +378,18 @@ def infrared():
 			speed = 0:
 			isEndLine = True
 		else:
-			isOnline = False
+			isOnLine = False
 			speed = 0;
 		#os.system('clear')
 		lock.release()
+##EO:infrared################################################################################
+
+##on_connect###################################################################################
+#	Author:		Jennifer McNeil
+#	Date:		Nov 25, 2018
+#	Modified:	Sangman Choi
+#	Desc: subscribe Topic via MQTT Protocal
+##############################################################################################
 
 def on_connect(client, userdata, flags, rc):
 
@@ -315,6 +402,14 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe("Start")
     client.subscribe("Power")
     client.subscribe("Error")
+##EO:on_connect################################################################################
+
+##on_message###################################################################################
+#	Author:		Jennifer McNeil
+#	Date:		Nov 25, 2018
+#	Modified:	Sangman Choi
+#	Desc: Recieve Message from another Rasp PI for Starting
+##############################################################################################
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
@@ -327,6 +422,16 @@ def on_message(client, userdata, msg):
 		#payload either 0, 1, or 2
 		start = True if msg.payload.decode() == "True" else False
 		print(start)
+##EO:on_message################################################################################
+
+##transferStatus###################################################################################
+#	Author:		Sangman Choi
+#	Date:		Nov 25, 2018
+#	Modified:	None
+#	Desc: Send Status Message to another Rasp PI
+#	Output:  Send Status (speed, direction, isObstacle, isEndLine, isDisconnected, compass
+#			 isTractorConnected, and Error Msg)
+##############################################################################################
 
 def transferStatus():
 	global process
@@ -334,6 +439,7 @@ def transferStatus():
 	global direction
 	global isObstacle
 	global isEndLine
+	global isDisconnected
 	global compass
 	global isTractorConnected
 
@@ -357,8 +463,8 @@ def transferStatus():
 			publish.single("Error", "Obstacle Found", hostname=ip)
 		elif isEndLine:
 			publish.single("Error", "Finished", hostname=ip)
-		elif isOnceConnected and isTractorConnected == False:
-			publish.single("Error", "Tractor Disconnected", hostname=ip)
+		elif isDisconnected:
+			publish.single("Error", "Tractor is Disconnected", hostname=ip)
 		elif isOnLine == False:
 			publish.single("Error", "Tractor is not on the lines", hostname=ip)
 
@@ -366,7 +472,9 @@ def transferStatus():
 		client.loop_stop()
 		lock.release()
 		time.sleep(1)
+##EO:transferStatus################################################################################
 
+###Main########################################################################################
 os.system('clear')
 print("Project [Tractor-Pull] Start!!!")
 time.sleep(1)
@@ -377,36 +485,33 @@ tStatus = threading.Thread(target=transferStatus)
 tStatus.start()
 print("Created Threads[tStatus]")
 
-#tChangeSpeed = threading.Thread(target=changeSpeed)
-#tChangeSpeed.start()
-#print("Created Threads[tChangeSpeed]")
-#
-#tChangeDirection = threading.Thread(target=changeDirection)
-#tChangeDirection.start()
-#print("Created Threads[tChangeDirection]")
-#
-#tDistance = threading.Thread(target=ultraDistance)
-#tDistance.start()
-#print("Created Threads[tDistance]")
-#
-#tCompass = threading.Thread(target=measureCompass)
-#tCompass.start()
-#print("Created Threads[tCompass]")
+tChangeSpeed = threading.Thread(target=changeSpeed)
+tChangeSpeed.start()
+print("Created Threads[tChangeSpeed]")
 
-#tHall = threading.Thread(target=hall)
-#tHall.start()
-#print("Created Threads[tHall]")
+tChangeDirection = threading.Thread(target=changeDirection)
+tChangeDirection.start()
+print("Created Threads[tChangeDirection]")
 
-#tInfrared = threading.Thread(target=infrared)
-#tInfrared.start()
-#print("Created Threads[tInfrared]")
+tDistance = threading.Thread(target=ultraDistance)
+tDistance.start()
+print("Created Threads[tDistance]")
+
+tCompass = threading.Thread(target=measureCompass)
+tCompass.start()
+print("Created Threads[tCompass]")
+
+tHall = threading.Thread(target=hall)
+tHall.start()
+print("Created Threads[tHall]")
+
+tInfrared = threading.Thread(target=infrared)
+tInfrared.start()
+print("Created Threads[tInfrared]")
 
 print ("Creating Threads Done!!")
 
-
-while 1:
-
-	print("Start", start)
+#while 1:
 #	lock.acquire()
 
 #	print("main\n")
@@ -421,24 +526,22 @@ while 1:
 #		print("Wrong input")
 #	speed = int(input("speed [0-2]:"))
 #	lock.release()
-	time.sleep(1)
+#	time.sleep(1)
 
 tStatus.join()
-#tDistance.join()
-#print("Joined Tread [tDistance]");
-#tChangeSpeed.join()
-#print("Joined Tread [tInfrared]");
-#tCompass.join()
-#print("Joined Tread [tCompass]");
-#tHall.join()
-#print("Joined Tread [tJoin]");
-
-#print("Joined Tread [tChangeSpeed]");
-#tChangeDirection.join()
-
-#print("Joined Tread [tChangeDirection]");
-#tInfrared.join()
-
-
+print("Joined Tread [tStatus]")
+tDistance.join()
+print("Joined Tread [tDistance]")
+tChangeSpeed.join()
+print("Joined Tread [tChangeSpeed]");
+tCompass.join()
+print("Joined Tread [tCompass]")
+tHall.join()
+print("Joined Tread [tHall]")
+print("Joined Tread [tChangeSpeed]");
+tChangeDirection.join()
+print("Joined Tread [tChangeDirection]")
+tInfrared.join()
+print("Joined Tread [tInfrared]")
 
 print ("Project [Tractor-Pull] DONE!!!")
