@@ -38,8 +38,7 @@ device_reg_mode = 0x00
 i2cAddress = {'compass' : 0x1E, 'infrared' : 0x48}
 sensorBus = smbus.SMBus(channel)
 pi = 3.14159265359
-
-delay = 0.2 
+delay = 0.1
 
 lock = threading.Lock()
 
@@ -105,15 +104,15 @@ def changeSpeed():
 
 			currentSpeed = speed;
 			print("speed: ",speed)
-			if speed == 0 or isEndLine or not isOnLine or isDisconnected:
+			if speed == 0:
 				print("speed0!!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], False)
-			elif speed == 1 and isOnLine and (not isEndLine) and (not isDisconnected):
+			elif speed == 1 and isOnLine and not isEndLine and not isDisconnected:
 				print("speed1!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], True)
-			elif speed == 2 and isOnLine and (not isEndLine) and (not isDisconnected):
+			elif speed == 2 and isOnline and not isEndLine and not isDisconnected:
 				print("speed2")
 				IO.output(pinPi['mainMotor1'], True)
 				IO.output(pinPi['mainMotor2'], False)
@@ -198,10 +197,10 @@ def ultraDistance():
 			lock.release()
 			continue #less than 1cm is error
 		print("%.1f cm" %distance)
-		if distance < 30.0 and speed == 1:
+		if distance < 60.0 and speed == 1:
 			speed = 0
-			isObstacle = True
-		elif distance > 35.0:
+		#	isObstacle = True
+		elif distance > 70.0:
 			isObstacle =False
 			speed = 1
 
@@ -306,14 +305,14 @@ def hall():
 
 		if IO.input(pinPi['hall']) == True:
 			isTractorConnected = True
-			isOnceConnected = True
+			#isOnceConnected = True
 			print("Tractor Connected")
 		else:
 			isTractorConnected = False
 			print("Tractor Not Connected")
 
 		if isOnceConnected == True and isTractorConnected == False:
-			isDisconnected = True
+			#isDisconnected = True
 			speed = 0
 
 		lock.release()
@@ -361,9 +360,8 @@ def infrared():
 		isRightSensored = 4 if adcValues[2] >= detect else 0
 
 		sensored = isLeftSensored + isCenterSensored + isRightSensored
-		if (sensored > 0 and sensored <7):
-			isOnLine = True
-			isEndLine = False
+		if (sensored > 0):
+			isOnLine = True:
 		print("Current.Derection = %s, Line Detection: %d" %(direction, sensored))
 		if (sensored == 1 or sensored == 3) and direction != 'left':
 			direction = 'left'
@@ -376,10 +374,11 @@ def infrared():
 			print("Change to right")
 		elif sensored == 7:
 			print("Detect Horizontal Line")
-			isEndLine = True
+			speed = 0
 		elif sensored == 0:
 			print("Not detect Line")
 			isOnLine = False
+			speed = 0;
 		
 		#os.system('clear')
 		lock.release()
@@ -484,7 +483,7 @@ print("Creating Threads")
 
 #tStatus = threading.Thread(target=transferStatus)
 #tStatus.start()
-#print("Created Threads[tStatus]")
+print("Created Threads[tStatus]")
 
 tChangeSpeed = threading.Thread(target=changeSpeed)
 tChangeSpeed.start()
@@ -502,22 +501,16 @@ print("Created Threads[tDistance]")
 #tCompass.start()
 #print("Created Threads[tCompass]")
 
-#tHall = threading.Thread(target=hall)
-#tHall.start()
-#print("Created Threads[tHall]")
+tHall = threading.Thread(target=hall)
+tHall.start()
+print("Created Threads[tHall]")
 
 tInfrared = threading.Thread(target=infrared)
 tInfrared.start()
 print("Created Threads[tInfrared]")
 
 print ("Creating Threads Done!!")
-
-#Test Code########
-speed = 0
 start = True
-delay = 1
-##################
-
 #while 1:
 #	lock.acquire()
 
