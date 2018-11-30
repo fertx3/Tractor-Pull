@@ -568,7 +568,7 @@ print ("Creating Threads Done!!")
 
 #Test Code########
 speed = 0
-start = True
+#start = True
 #delay = 1
 ##################
 
