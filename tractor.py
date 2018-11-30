@@ -75,6 +75,7 @@ compass = "N"
 speed = 0
 start = False
 distance = 0
+current = 0
 
 isTractorConnected = False
 isObstacle = False
@@ -358,6 +359,7 @@ def infrared():
 	global speed
 	global isOnLine
 	global isEndLine
+	global current
 
 	detect = 20000
 
@@ -402,7 +404,8 @@ def infrared():
 		elif sensored == 0:
 			print("Not detect Line")
 			isOnLine = False
-		
+		current = 489.29 * 0.000001 * adcValues[3] - 11.025	
+		print("Current : ", format(current, '.3f'))
 		#os.system('clear')
 		lock.release()
 ##EO:infrared################################################################################
@@ -453,7 +456,7 @@ def on_message(client, userdata, msg):
 	if msg.topic == "Start":
 		#payload either 0, 1, or 2
 		start = True if msg.payload.decode() == "True" else False
-		time.sleep(1)
+		#time.sleep(1)
 		print("Trator Started!!")
 
 	if msg.topic == "Reset":
@@ -494,7 +497,7 @@ def transferStatus():
 	global isDisconnected
 	global compass
 	global isTractorConnected	
-
+	global current
 	errorMsg = ""
 
 	client = mqtt.Client()
@@ -508,7 +511,7 @@ def transferStatus():
 		client.loop_start()
 		print("pubslishing")
 		publish.single("Compass", compass, hostname=ip)
-		publish.single("Current","0", hostname=ip)
+		publish.single("Current", format(current, '.2f'), hostname=ip)
 		publish.single("Obsticle",isObstacle, hostname=ip)
 		publish.single("Trailer",isTractorConnected, hostname=ip)
 		if isObstacle:
@@ -565,7 +568,7 @@ print ("Creating Threads Done!!")
 
 #Test Code########
 speed = 0
-#start = True
+start = True
 #delay = 1
 ##################
 
