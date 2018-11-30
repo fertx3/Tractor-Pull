@@ -30,7 +30,7 @@ if len(sys.argv) != 2:
 
 #mqtt configuration
 #ip = "172.22.20.29"
-#ip = sys.argv[1]
+ip = sys.argv[1]
 
 #I2C Setup
 channel = 1
@@ -39,7 +39,7 @@ i2cAddress = {'compass' : 0x1E, 'infrared' : 0x48}
 sensorBus = smbus.SMBus(channel)
 pi = 3.14159265359
 
-delay = 0.2 
+delay = 0.1
 
 lock = threading.Lock()
 
@@ -61,6 +61,9 @@ IO.setup(pinPi['mainMotor2'],IO.OUT)
 IO.setup(pinPi['ultraTrigger'],IO.OUT)
 IO.setup(pinPi['ultraEcho'],IO.IN)
 IO.setup(pinPi['hall'],IO.IN)
+#turn off main motor
+IO.output(pinPi['mainMotor1'], False)
+IO.output(pinPi['mainMotor2'], False)
 
 #Initialize PWM signal for Servomotor
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
@@ -70,13 +73,16 @@ pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
 direction = 'center'
 compass = "N"
 speed = 0
-isTractorConnected = False
+start = False
 distance = 0
+
+isTractorConnected = False
 isObstacle = False
 isOnLine = True
 isEndLine = False
-start = False
 isDisconnected = False
+isShutdown = False
+isOnceConnected = False
 
 ##changeSpeed###################################################################################
 #	Author:		Sangman Choi
@@ -92,33 +98,49 @@ def changeSpeed():
 	global process
 	global isEndLine
 	global isOnLine
-
+	global isDisconnected
+	global isObstacle
+	global isShutdown
+	
 	currentSpeed = 0;
 
 	while process == True:
 		while start == True:
 			time.sleep(delay)
 			lock.acquire()
+
+			if (not isShutdown) and (not isEndLine) and (isOnLine) and (not isDisconnected) and (not isObstacle):
+				speed = 1 
+			else:
+				speed = 0
+
+			if isShutdown:
+				isShutdown = False
+
 			if currentSpeed == speed:
 				lock.release()
 				continue
 
 			currentSpeed = speed;
 			print("speed: ",speed)
-			if speed == 0 or isEndLine or not isOnLine or isDisconnected:
+			if speed == 0:
 				print("speed0!!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], False)
-			elif speed == 1 and isOnLine and (not isEndLine) and (not isDisconnected):
+			elif speed == 1:
 				print("speed1!")
 				IO.output(pinPi['mainMotor1'], False)
 				IO.output(pinPi['mainMotor2'], True)
-			elif speed == 2 and isOnLine and (not isEndLine) and (not isDisconnected):
+			elif speed == 2:
 				print("speed2")
 				IO.output(pinPi['mainMotor1'], True)
 				IO.output(pinPi['mainMotor2'], False)
 			print("change speed\n")
 			lock.release()
+		speed = 0
+		IO.output(pinPi['mainMotor1'], False)
+		IO.output(pinPi['mainMotor2'], False)
+
 ##EO:changeSpeed################################################################################
 
 ##changeDirection###################################################################################
@@ -198,10 +220,10 @@ def ultraDistance():
 			lock.release()
 			continue #less than 1cm is error
 		print("%.1f cm" %distance)
-		if distance < 30.0 and speed == 1:
+		if distance < 30.0:
 			speed = 0
 			isObstacle = True
-		elif distance > 35.0:
+		elif distance > 35.0 or not isOnLine:
 			isObstacle =False
 			speed = 1
 
@@ -224,7 +246,7 @@ def measureCompass():
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x01, 0xA0)
 	sensorBus.write_byte_data(i2cAddress['compass'], 0x02, 0x00)
 
-	time.sleep(0.5)
+	time.sleep(delay)
 	heading = 0.0
 	#London Declination Angle: 8.58
 	declination = ((8.0 + (58.0 / 60.0)) / (180/pi))
@@ -261,7 +283,7 @@ def measureCompass():
 		print("Heading Angle: %d" %headingAngle)
 		print("X: %d, Y: %d, Z: %d" %(xCompass,yCompass,zCompass))
 
-		if (headingAngle < 23 or headingAngle > 338):
+		if (headingAngle < 23 or headingAngle >= 338):
 			compass = "N"
 		elif (headingAngle < 68):
 			compass = "NE"
@@ -297,24 +319,24 @@ def measureCompass():
 def hall():
 	global isTractorConnected
 	global isDisconnected
-	isOnceConnected = False
+	global isOnceConnected
 
 	global process
 	while process == True:
 		time.sleep(delay)
 		lock.acquire()
 
-		if IO.input(pinPi['hall']) == True:
+		if IO.input(pinPi['hall']) == False:
 			isTractorConnected = True
 			isOnceConnected = True
+
 			print("Tractor Connected")
 		else:
-			isTractorConnected = False
+			isTractorConnected = False 
 			print("Tractor Not Connected")
 
-		if isOnceConnected == True and isTractorConnected == False:
+		if (isOnceConnected == True) and (isTractorConnected == False):
 			isDisconnected = True
-			speed = 0
 
 		lock.release()
 ##EO:hall################################################################################
@@ -361,9 +383,9 @@ def infrared():
 		isRightSensored = 4 if adcValues[2] >= detect else 0
 
 		sensored = isLeftSensored + isCenterSensored + isRightSensored
-		if (sensored > 0 and sensored <7):
-			isOnLine = True
-			isEndLine = False
+	#	if (sensored > 0 and sensored <7):
+	#		isOnLine = True
+	#		isEndLine = False
 		print("Current.Derection = %s, Line Detection: %d" %(direction, sensored))
 		if (sensored == 1 or sensored == 3) and direction != 'left':
 			direction = 'left'
@@ -403,6 +425,8 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe("Start")
     client.subscribe("Power")
     client.subscribe("Error")
+    client.subscribe("Reset")
+    client.subscribe("Shutdown")
 ##EO:on_connect################################################################################
 
 ##on_message###################################################################################
@@ -415,14 +439,40 @@ def on_connect(client, userdata, flags, rc):
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
 	global start
-	#print ()
-	#print (msg.topic)
-	#print (msg.payload.decode() )
+	global isShutdown
+	global direction
+	global speed
+	global isTractorConnected
+	global isObstacle
+	global isOnLine
+	global isEndLine
+	global isDisconnected
+	global isShutdown
+	global isOnceConnected
 
 	if msg.topic == "Start":
 		#payload either 0, 1, or 2
 		start = True if msg.payload.decode() == "True" else False
-		print(start)
+		time.sleep(1)
+		print("Trator Started!!")
+
+	if msg.topic == "Reset":
+		if msg.payload.decode() == "True":
+			print("Reset Signal Detected!!")
+			#time.sleep(1)
+			speed = 0
+			isTractorConnected = False
+			isObstacle = False
+			isOnLine = True
+			isEndLine = False
+			isDisconnected = False
+			isShutdown = False
+			isOnceConnected = False
+
+	if msg.topic == "Shutdown":
+		print("Reset Signal Detected!!")
+		isShutdown = True if msg.payload.decode() == "True" else False
+
 ##EO:on_message################################################################################
 
 ##transferStatus###################################################################################
@@ -435,6 +485,7 @@ def on_message(client, userdata, msg):
 ##############################################################################################
 
 def transferStatus():
+	global ip
 	global process
 	global speed
 	global direction
@@ -442,7 +493,7 @@ def transferStatus():
 	global isEndLine
 	global isDisconnected
 	global compass
-	global isTractorConnected
+	global isTractorConnected	
 
 	errorMsg = ""
 
@@ -455,7 +506,7 @@ def transferStatus():
 	while True:
 		lock.acquire()
 		client.loop_start()
-		print("pubslish")
+		print("pubslishing")
 		publish.single("Compass", compass, hostname=ip)
 		publish.single("Current","0", hostname=ip)
 		publish.single("Obsticle",isObstacle, hostname=ip)
@@ -472,7 +523,7 @@ def transferStatus():
 		print("published")
 		client.loop_stop()
 		lock.release()
-		time.sleep(1)
+		time.sleep(delay)
 ##EO:transferStatus################################################################################
 
 ###Main########################################################################################
@@ -482,9 +533,9 @@ time.sleep(1)
 
 print("Creating Threads")
 
-#tStatus = threading.Thread(target=transferStatus)
-#tStatus.start()
-#print("Created Threads[tStatus]")
+tStatus = threading.Thread(target=transferStatus)
+tStatus.start()
+print("Created Threads[tStatus]")
 
 tChangeSpeed = threading.Thread(target=changeSpeed)
 tChangeSpeed.start()
@@ -498,13 +549,13 @@ tDistance = threading.Thread(target=ultraDistance)
 tDistance.start()
 print("Created Threads[tDistance]")
 
-#tCompass = threading.Thread(target=measureCompass)
-#tCompass.start()
-#print("Created Threads[tCompass]")
+tCompass = threading.Thread(target=measureCompass)
+tCompass.start()
+print("Created Threads[tCompass]")
 
-#tHall = threading.Thread(target=hall)
-#tHall.start()
-#print("Created Threads[tHall]")
+tHall = threading.Thread(target=hall)
+tHall.start()
+print("Created Threads[tHall]")
 
 tInfrared = threading.Thread(target=infrared)
 tInfrared.start()
@@ -514,8 +565,8 @@ print ("Creating Threads Done!!")
 
 #Test Code########
 speed = 0
-start = True
-delay = 1
+#start = True
+#delay = 1
 ##################
 
 #while 1:
@@ -535,17 +586,17 @@ delay = 1
 #	lock.release()
 #	time.sleep(1)
 
-#tStatus.join()
-#print("Joined Tread [tStatus]")
+tStatus.join()
+print("Joined Tread [tStatus]")
 tDistance.join()
 print("Joined Tread [tDistance]")
 tChangeSpeed.join()
 print("Joined Tread [tChangeSpeed]");
 tCompass.join()
 print("Joined Tread [tCompass]")
-#tHall.join()
-#print("Joined Tread [tHall]")
-#print("Joined Tread [tChangeSpeed]");
+tHall.join()
+print("Joined Tread [tHall]")
+print("Joined Tread [tChangeSpeed]");
 tChangeDirection.join()
 print("Joined Tread [tChangeDirection]")
 tInfrared.join()
