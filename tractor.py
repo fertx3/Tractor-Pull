@@ -32,6 +32,10 @@ if len(sys.argv) != 2:
 #ip = "172.22.20.29"
 ip = sys.argv[1]
 
+###########################################################################
+# global Variables
+###########################################################################
+
 #I2C Setup
 channel = 1
 device_reg_mode = 0x00
@@ -41,15 +45,32 @@ pi = 3.14159265359
 
 delay = 0.1
 
-lock = threading.Lock()
-
+#Initialize Global Variables
 process = True
+
+direction = 'center'
+compass = "N"
+speed = 0
+start = False
+distance = 0
+current = 0
+
+isTractorConnected = False
+isObstacle = False
+isOnLine = True
+isEndLine = False
+isDisconnected = False
+isShutdown = False
+isOnceConnected = False
+
+lock = threading.Lock()
 
 #pin19 may be damaged
 pinPi = {'servoMotor': 12, 'mainMotor1': 7, 'mainMotor2': 8, 'hall':16, 'ultraTrigger' : 21, 'ultraEcho' : 20, }
 
 #Max Value - Left: 1000 Center: 1500 Right: 2000
 directionVar = {'left': 1050, 'center':1550, 'right': 1950}
+##############################################################################
 
 IO.setwarnings(False)          			#do not show any warnings
 IO.setmode (IO.BCM)     			    #Programming the GPIO by BCM pin numbers.
@@ -69,22 +90,6 @@ IO.output(pinPi['mainMotor2'], False)
 pinDirection = PWM.Servo()         #GPIO13 as PWM output, with 20ms period
 pinDirection.set_servo(pinPi['servoMotor'], directionVar['center']  )
 
-#Initialize Global Variables
-direction = 'center'
-compass = "N"
-speed = 0
-start = False
-distance = 0
-current = 0
-
-isTractorConnected = False
-isObstacle = False
-isOnLine = True
-isEndLine = False
-isDisconnected = False
-isShutdown = False
-isOnceConnected = False
-
 ##changeSpeed###################################################################################
 #	Author:		Sangman Choi
 #	Date:		Nov 25, 2018
@@ -102,7 +107,7 @@ def changeSpeed():
 	global isDisconnected
 	global isObstacle
 	global isShutdown
-	
+
 	currentSpeed = 0;
 
 	while process == True:
@@ -111,7 +116,7 @@ def changeSpeed():
 			lock.acquire()
 
 			if (not isShutdown) and (not isEndLine) and (isOnLine) and (not isDisconnected) and (not isObstacle):
-				speed = 1 
+				speed = 1
 			else:
 				speed = 0
 
@@ -333,7 +338,7 @@ def hall():
 
 			print("Tractor Connected")
 		else:
-			isTractorConnected = False 
+			isTractorConnected = False
 			print("Tractor Not Connected")
 
 		if (isOnceConnected == True) and (isTractorConnected == False):
@@ -404,7 +409,7 @@ def infrared():
 		elif sensored == 0:
 			print("Not detect Line")
 			isOnLine = False
-		current = 489.29 * 0.000001 * adcValues[3] - 11.025	
+		current = 489.29 * 0.000001 * adcValues[3] - 11.025
 		print("Current : ", format(current, '.3f'))
 		#os.system('clear')
 		lock.release()
@@ -496,7 +501,7 @@ def transferStatus():
 	global isEndLine
 	global isDisconnected
 	global compass
-	global isTractorConnected	
+	global isTractorConnected
 	global current
 	errorMsg = ""
 
